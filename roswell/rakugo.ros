@@ -1,0 +1,46 @@
+#!/bin/sh
+#|-*- mode:lisp -*-|#
+#| <Put a one-line description here>
+exec ros -Q -- $0 "$@"
+|#
+(progn ;;init forms
+  (ql:quickload '(:rakugo :local-time :quri :alexandria) :silent t))
+
+(defpackage :ros.script..roswell/bin/rakugo.3679276226
+  (:use #:cl))
+(in-package :ros.script..roswell/bin/rakugo.3679276226)
+
+(defun main (&rest queries)
+  (let* ((today (local-time:today))
+         (today+1mon (local-time:timestamp+ today 1 :month))
+         (performer-schedules
+           (loop for query in queries
+                 collect (rakugo:search-performer-schedules query)))
+         (sorted-schedules
+           (sort
+            (delete-duplicates
+             (remove-if (lambda (date)
+                          (local-time:timestamp< today+1mon date))
+                        (apply #'append (mapcar #'cdr performer-schedules))
+                        :key #'rakugo.class:schedule-date)
+             :test #'rakugo.class:schedule=)
+            #'local-time:timestamp<
+            :key #'rakugo.class:schedule-date)))
+    (format t "~&~{~A~^, ~}が出演する定席・落語会~%"
+            (mapcar (alexandria:compose #'rakugo.class:performer-name #'car)
+                    performer-schedules))
+    (dolist (schedule sorted-schedules)
+      (format t "~2&~A~%~A~%URL: ~A~%主な出演者: ~{~A~^, ~}~%"
+              (local-time:format-timestring nil
+                                            (rakugo.class:schedule-date schedule)
+                                            :format '((:year 4) #\/ (:month 2) #\/ (:day 2)))
+              (rakugo.class:schedule-title schedule)
+              (quri:render-uri (rakugo.class:schedule-url schedule))
+              (mapcar (lambda (res)
+                        (rakugo.class:performer-name (car res)))
+                      (remove-if-not (lambda (result)
+                                       (find schedule
+                                             (cdr result)
+                                             :test #'rakugo.class:schedule=))
+                                     performer-schedules))))))
+;;; vim: set ft=lisp lisp:
